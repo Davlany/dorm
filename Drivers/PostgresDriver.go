@@ -4,6 +4,7 @@ import (
 	"dorm/pkg"
 	"fmt"
 	"github.com/jmoiron/sqlx"
+	"reflect"
 )
 
 type PostgresDriver struct {
@@ -13,6 +14,104 @@ type PostgresDriver struct {
 type PgTable struct {
 	name string
 	pd   *PostgresDriver
+}
+
+func (pt PgTable) InsertOne(entity interface{}) (int, error) {
+
+	queryParam := pkg.ScanTagsFromKeyInStruct(entity, "db")
+	query := fmt.Sprintf("INSERT INTO %s(", pt.name)
+	k := 1
+	var keys []string
+	for key, _ := range queryParam {
+		if k == len(queryParam) {
+			keys = append(keys, key)
+			query += fmt.Sprintf("%s", key)
+		} else {
+			keys = append(keys, key)
+			query += fmt.Sprintf("%s,", key)
+		}
+		k++
+	}
+	k = 1
+	query += ") values("
+	for _, value := range keys {
+		if k == len(queryParam) {
+			if reflect.TypeOf(queryParam[value]).Kind() == reflect.String {
+				query += fmt.Sprintf("'%s'", queryParam[value])
+			} else {
+				query += fmt.Sprintf("%d", queryParam[value])
+			}
+		} else {
+			if reflect.TypeOf(queryParam[value]).Kind() == reflect.String {
+				query += fmt.Sprintf("'%s',", queryParam[value])
+			} else {
+				query += fmt.Sprintf("%d,", queryParam[value])
+			}
+		}
+		k++
+	}
+	query += ") returning id;"
+	var res int
+	err := pt.pd.conn.QueryRowx(query).Scan(&res)
+	if err != nil {
+		return 0, err
+	}
+	return res, nil
+
+}
+
+func (pt PgTable) InsertMany(entities interface{}) error {
+	num := reflect.ValueOf(entities).Len()
+	query := fmt.Sprintf("INSERT INTO %s(", pt.name)
+	var entitiesValue []map[string]interface{}
+	for i := 0; i < num; i++ {
+		val := pkg.ScanTagsFromKeyInStruct(reflect.ValueOf(entities).Index(i).Interface(), "db")
+		entitiesValue = append(entitiesValue, val)
+	}
+	i := 1
+	var keys []string
+	for key, _ := range entitiesValue[0] {
+		if i == len(entitiesValue[0]) {
+			query += fmt.Sprintf("%s", key)
+			keys = append(keys, key)
+		} else {
+			query += fmt.Sprintf("%s,", key)
+			keys = append(keys, key)
+		}
+		i++
+	}
+	query += ") VALUES "
+	n := 1
+	for _, ent := range entitiesValue {
+		query += "("
+		for i := 0; i < len(keys); i++ {
+			if reflect.TypeOf(ent[keys[i]]).Kind() == reflect.String {
+				if i == len(keys)-1 {
+					query += fmt.Sprintf("'%s'", ent[keys[i]])
+				} else {
+					query += fmt.Sprintf("'%s',", ent[keys[i]])
+				}
+			} else {
+				if i == len(keys)-1 {
+					query += fmt.Sprintf("%d", ent[keys[i]])
+				} else {
+					query += fmt.Sprintf("%d,", ent[keys[i]])
+				}
+			}
+
+		}
+		if n == len(entitiesValue) {
+			query += ");"
+		} else {
+			query += "),"
+		}
+		n++
+	}
+	_, err := pt.pd.conn.Query(query)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (pd PostgresDriver) ConnTable(name string) pkg.Table {
