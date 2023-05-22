@@ -1,12 +1,25 @@
 package Drivers
 
 import (
+	"dorm/pkg"
 	"fmt"
 	"github.com/jmoiron/sqlx"
 )
 
 type PostgresDriver struct {
 	conn *sqlx.DB
+}
+
+type PgTable struct {
+	name string
+	pd   *PostgresDriver
+}
+
+func (pd PostgresDriver) ConnTable(name string) pkg.Table {
+	return PgTable{
+		name: name,
+		pd:   &pd,
+	}
 }
 
 func NewPostgresDriver(user, password, dbName, port, sslMode string) (*PostgresDriver, error) {
