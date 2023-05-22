@@ -15,3 +15,9 @@ type Driver interface {
 func (d Database) Table(name string) pkg.Table {
 	return d.driver.ConnTable(name)
 }
+
+func NewDatabase(driver Driver) *Database {
+	return &Database{
+		driver: driver,
+	}
+}
