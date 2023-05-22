@@ -114,6 +114,28 @@ func (pt PgTable) InsertMany(entities interface{}) error {
 	return nil
 }
 
+func (pt PgTable) FindOne(id interface{}, dest interface{}) error {
+	i := reflect.TypeOf(id)
+	if i.Kind() == reflect.String {
+		query := fmt.Sprintf("SELECT * from %s WHERE id = '%s'", pt.name, id)
+		err := pt.pd.conn.Get(dest, query)
+		return err
+	} else {
+		query := fmt.Sprintf("SELECT * from %s WHERE id = %d", pt.name, id)
+		err := pt.pd.conn.Get(dest, query)
+		return err
+	}
+}
+
+func (pt PgTable) FindAll(dest interface{}) error {
+	query := fmt.Sprintf("SELECT * from %s", pt.name)
+	err := pt.pd.conn.Select(dest, query)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (pd PostgresDriver) ConnTable(name string) pkg.Table {
 	return PgTable{
 		name: name,

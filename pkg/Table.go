@@ -3,11 +3,11 @@ package pkg
 type Table interface {
 	InsertOne(interface{}) (int, error)
 	InsertMany(interface{}) error
-	//FindOne()
+	FindOne(interface{}, interface{}) error
+	FindAll(interface{}) error
 	//FindByOne()
 	//FindByMany()
 	//FindByAll()
-	//FindAll()
 	//UpdateOne()
 	//UpdateMany()
 	//DeleteOne()
