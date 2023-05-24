@@ -136,6 +136,50 @@ func (pt PgTable) FindAll(dest interface{}) error {
 	return nil
 }
 
+func (pt PgTable) UpdateOne(entity interface{}) error {
+	tagsValue := pkg.ScanTagsFromKeyInStruct(entity, "db")
+	id := tagsValue["id"]
+	delete(tagsValue, "id")
+	query := fmt.Sprintf("UPDATE %s SET ", pt.name)
+	i := 1
+	for key, value := range tagsValue {
+		if i == len(tagsValue) {
+			if reflect.TypeOf(value).Kind() == reflect.String {
+				query += fmt.Sprintf("%s = '%s'", key, value)
+			} else {
+				query += fmt.Sprintf("%s = %d", key, value)
+			}
+		} else {
+			if value == reflect.String {
+				query += fmt.Sprintf("%s = '%s',", key, value)
+			} else {
+				query += fmt.Sprintf("%s = %d,", key, value)
+			}
+		}
+		i++
+	}
+	if reflect.TypeOf(id).Kind() == reflect.String {
+		query += fmt.Sprintf(" WHERE id = '%s'", id)
+	} else {
+		query += fmt.Sprintf(" WHERE id = %d", id)
+	}
+
+	_, err := pt.pd.conn.Query(query)
+
+	return err
+}
+
+func (pt PgTable) UpdateMany(entities interface{}) error {
+	num := reflect.TypeOf(entities).Len()
+	for i := 0; i < num; i++ {
+		err := pt.UpdateOne(entities)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (pd PostgresDriver) ConnTable(name string) pkg.Table {
 	return PgTable{
 		name: name,

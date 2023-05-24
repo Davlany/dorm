@@ -5,11 +5,11 @@ type Table interface {
 	InsertMany(interface{}) error
 	FindOne(interface{}, interface{}) error
 	FindAll(interface{}) error
+	UpdateOne(interface{}) error
+	UpdateMany(interface{}) error
 	//FindByOne()
 	//FindByMany()
 	//FindByAll()
-	//UpdateOne()
-	//UpdateMany()
 	//DeleteOne()
 	//DeleteByAll()
 	//DeleteAll()
