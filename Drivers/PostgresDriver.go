@@ -171,8 +171,9 @@ func (pt PgTable) UpdateOne(entity interface{}) error {
 
 func (pt PgTable) UpdateMany(entities interface{}) error {
 	num := reflect.TypeOf(entities).Len()
+	sl := reflect.ValueOf(entities)
 	for i := 0; i < num; i++ {
-		err := pt.UpdateOne(entities)
+		err := pt.UpdateOne(sl.Index(i))
 		if err != nil {
 			return err
 		}
