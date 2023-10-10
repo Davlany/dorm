@@ -22,7 +22,7 @@ func (pt PgTable) InsertOne(entity interface{}) (int, error) {
 	query := fmt.Sprintf("INSERT INTO %s(", pt.name)
 	k := 1
 	var keys []string
-	for key, _ := range queryParam {
+	for key := range queryParam {
 		if k == len(queryParam) {
 			keys = append(keys, key)
 			query += fmt.Sprintf("%s", key)
