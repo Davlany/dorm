@@ -181,7 +181,9 @@ func (pt PgTable) UpdateMany(entities interface{}) error {
 	return nil
 }
 
-func (pd PostgresDriver) ConnTable(name string) pkg.Table {
+func (pd PostgresDriver) ConnTable(name string, strct interface{}) pkg.Table {
+	createTableQuery := fmt.Sprintf("CREATE TABLE %s (", name)
+	tagsValue := pkg.ScanTagsFromKeyInStruct(strct, "db")
 	return PgTable{
 		name: name,
 		pd:   &pd,

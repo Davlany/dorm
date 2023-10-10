@@ -9,11 +9,11 @@ type Database struct {
 }
 
 type Driver interface {
-	ConnTable(string) pkg.Table
+	ConnTable(string, interface{}) pkg.Table
 }
 
-func (d Database) Table(name string) pkg.Table {
-	return d.driver.ConnTable(name)
+func (d Database) Table(name string, strct interface{}) pkg.Table {
+	return d.driver.ConnTable(name, strct)
 }
 
 func NewDatabase(driver Driver) *Database {
