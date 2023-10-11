@@ -1,9 +1,11 @@
 package Drivers
 
 import (
+	"database/sql"
 	"dorm/pkg"
 	"fmt"
 	"github.com/jmoiron/sqlx"
+	"log"
 	"reflect"
 )
 
@@ -14,6 +16,10 @@ type PostgresDriver struct {
 type PgTable struct {
 	name string
 	pd   *PostgresDriver
+}
+
+type MyTable struct {
+	TableName string `db:"table_name"`
 }
 
 func (pt PgTable) InsertOne(entity interface{}) (int, error) {
@@ -182,8 +188,29 @@ func (pt PgTable) UpdateMany(entities interface{}) error {
 }
 
 func (pd PostgresDriver) ConnTable(name string, strct interface{}) pkg.Table {
-	createTableQuery := fmt.Sprintf("CREATE TABLE %s (", name)
-	tagsValue := pkg.ScanTagsFromKeyInStruct(strct, "db")
+	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s' AND table_schema = 'public'", name)
+	err := pd.conn.Get(&MyTable{}, query)
+	if err == sql.ErrNoRows {
+		createTableQuery := fmt.Sprintf("CREATE TABLE %s (", name)
+		tagsType := pkg.ScanTypeFromKeyInStruct(strct, "db")
+
+		DbTypes := map[string]string{
+			"int":     "INTEGER",
+			"string":  "TEXT",
+			"float32": "DOUBLE",
+			"float64": "DOUBLE",
+		}
+
+		for name, dataType := range tagsType {
+			createTableQuery += fmt.Sprintf("%s %s,", name, DbTypes[dataType])
+		}
+		createTableQuery = createTableQuery[:len(createTableQuery)-1] + ")"
+		fmt.Println(createTableQuery)
+		_, err := pd.conn.Query(createTableQuery)
+		if err != nil {
+			log.Fatalln(err, "sdsd")
+		}
+	}
 	return PgTable{
 		name: name,
 		pd:   &pd,

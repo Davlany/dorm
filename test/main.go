@@ -27,10 +27,14 @@ func main() {
 		log.Fatalln(err)
 	}
 	db := dorm.NewDatabase(driver)
-	table := db.Table("users", User{})
+	table := db.Table("test2_users", User{})
 
-	var user []User
-	err = table.FindAll(&user)
+	user := User{
+		Id:       111126,
+		Name:     "Davlany",
+		Password: "sjahfdhkjno9182hd92oiej",
+	}
+	_, err = table.InsertOne(user)
 	if err != nil {
 		log.Fatalln(err)
 	}

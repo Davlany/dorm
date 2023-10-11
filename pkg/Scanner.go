@@ -18,16 +18,13 @@ func ScanTagsFromKeyInStruct(obj interface{}, key string) map[string]interface{}
 	return res
 }
 
-func ScanTypeFromKeyInStruct(obj interface{}, key string) map[string]interface{} {
+func ScanTypeFromKeyInStruct(obj interface{}, key string) map[string]string {
 	num := reflect.TypeOf(obj).NumField()
-	res := make(map[string]interface{})
+	res := make(map[string]string)
 	for i := 0; i < num; i++ {
-		val := reflect.TypeOf(obj).Field(i).Type
-		if reflect.ValueOf(obj).Field(i).Kind() == reflect.Int {
-			res[val] = reflect.ValueOf(obj).Field(i).Int()
-		} else {
-			res[val] = reflect.ValueOf(obj).Field(i).String()
-		}
+		dataType := reflect.TypeOf(obj).Field(i).Type.String()
+		name := reflect.TypeOf(obj).Field(i).Tag.Get(key)
+		res[name] = dataType
 	}
 	return res
 }
