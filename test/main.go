@@ -9,16 +9,18 @@ import (
 )
 
 type User struct {
-	Id       int    `db:"id"`
+	Id       int    `db:"id" serial:"true"`
 	Name     string `db:"name"`
 	Password string `db:"password"`
+	Posts    []Post `rel:"posts" rel_type:"one_to_many" field:"user_id"`
 }
 
 type Post struct {
-	Id          int
-	Caption     string
-	Description string
-	Likes       int
+	Id          int    `db:"id" serial:"true"`
+	Caption     string `db:"caption"`
+	Description string `db:"description"`
+	Likes       int    `db:"likes"`
+	UserId      int    `db:"user_id" fk:"true"`
 }
 
 func main() {
@@ -27,16 +29,11 @@ func main() {
 		log.Fatalln(err)
 	}
 	db := dorm.NewDatabase(driver)
-	table := db.Table("test2_users", User{})
-
-	user := User{
-		Id:       111126,
-		Name:     "Davlany",
-		Password: "sjahfdhkjno9182hd92oiej",
-	}
-	_, err = table.InsertOne(user)
+	userTable := db.Table("users", User{})
+	var user User
+	err = userTable.FindOne(1111, user)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	fmt.Println(user)
+	fmt.Println(user.Posts)
 }

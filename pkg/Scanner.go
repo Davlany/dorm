@@ -24,6 +24,14 @@ func ScanTypeFromKeyInStruct(obj interface{}, key string) map[string]string {
 	for i := 0; i < num; i++ {
 		dataType := reflect.TypeOf(obj).Field(i).Type.String()
 		name := reflect.TypeOf(obj).Field(i).Tag.Get(key)
+		if name == "id" {
+			if reflect.TypeOf(obj).Field(i).Tag.Get("serial") == "true" {
+				dataType = "serial"
+			}
+			if reflect.TypeOf(obj).Field(i).Tag.Get("uq") == "true" {
+				dataType += "_uq"
+			}
+		}
 		res[name] = dataType
 	}
 	return res

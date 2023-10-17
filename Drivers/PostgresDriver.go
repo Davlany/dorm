@@ -2,6 +2,7 @@ package Drivers
 
 import (
 	"database/sql"
+	"dorm"
 	"dorm/pkg"
 	"fmt"
 	"github.com/jmoiron/sqlx"
@@ -14,49 +15,35 @@ type PostgresDriver struct {
 }
 
 type PgTable struct {
-	name string
+	name string `db:"table_name"`
 	pd   *PostgresDriver
 }
 
-type MyTable struct {
-	TableName string `db:"table_name"`
-}
-
 func (pt PgTable) InsertOne(entity interface{}) (int, error) {
-
 	queryParam := pkg.ScanTagsFromKeyInStruct(entity, "db")
-	query := fmt.Sprintf("INSERT INTO %s(", pt.name)
-	k := 1
+	query := fmt.Sprintf("INSERT INTO %s (", pt.name)
 	var keys []string
-	for key := range queryParam {
-		if k == len(queryParam) {
-			keys = append(keys, key)
-			query += fmt.Sprintf("%s", key)
-		} else {
-			keys = append(keys, key)
-			query += fmt.Sprintf("%s,", key)
+	for name := range queryParam {
+		if name == "id" && pkg.ScanTypeFromKeyInStruct(entity, "db")["id"] == "serial" {
+			continue
 		}
-		k++
+		keys = append(keys, name)
+		query += fmt.Sprintf("%s,", name)
 	}
-	k = 1
-	query += ") values("
-	for _, value := range keys {
-		if k == len(queryParam) {
-			if reflect.TypeOf(queryParam[value]).Kind() == reflect.String {
-				query += fmt.Sprintf("'%s'", queryParam[value])
-			} else {
-				query += fmt.Sprintf("%d", queryParam[value])
-			}
-		} else {
-			if reflect.TypeOf(queryParam[value]).Kind() == reflect.String {
-				query += fmt.Sprintf("'%s',", queryParam[value])
-			} else {
-				query += fmt.Sprintf("%d,", queryParam[value])
-			}
+	query = query[:len(query)-1] + ") values ("
+	for _, key := range keys {
+		if key == "id" && pkg.ScanTypeFromKeyInStruct(entity, "db")["id"] == "serial" {
+			continue
 		}
-		k++
+		if reflect.TypeOf(queryParam[key]).Kind() == reflect.String {
+			query += fmt.Sprintf("'%s',", queryParam[key])
+		} else {
+			query += fmt.Sprintf("%d,", queryParam[key])
+		}
+
 	}
-	query += ") returning id;"
+	query = query[:len(query)-1] + ") returning id;"
+	fmt.Println(query)
 	var res int
 	err := pt.pd.conn.QueryRowx(query).Scan(&res)
 	if err != nil {
@@ -71,48 +58,32 @@ func (pt PgTable) InsertMany(entities interface{}) error {
 	query := fmt.Sprintf("INSERT INTO %s(", pt.name)
 	var entitiesValue []map[string]interface{}
 	for i := 0; i < num; i++ {
-		val := pkg.ScanTagsFromKeyInStruct(reflect.ValueOf(entities).Index(i).Interface(), "db")
+		entityValue := reflect.ValueOf(entities).Index(i).Interface()
+		val := pkg.ScanTagsFromKeyInStruct(entityValue, "db")
 		entitiesValue = append(entitiesValue, val)
 	}
-	i := 1
 	var keys []string
-	for key, _ := range entitiesValue[0] {
-		if i == len(entitiesValue[0]) {
-			query += fmt.Sprintf("%s", key)
-			keys = append(keys, key)
-		} else {
-			query += fmt.Sprintf("%s,", key)
-			keys = append(keys, key)
+	for key := range entitiesValue[0] {
+		if key == "id" {
+			continue
 		}
-		i++
+		query += fmt.Sprintf("%s,", key)
+		keys = append(keys, key)
 	}
-	query += ") VALUES "
-	n := 1
+	query = query[:len(query)-1] + ") VALUES "
+
 	for _, ent := range entitiesValue {
 		query += "("
 		for i := 0; i < len(keys); i++ {
 			if reflect.TypeOf(ent[keys[i]]).Kind() == reflect.String {
-				if i == len(keys)-1 {
-					query += fmt.Sprintf("'%s'", ent[keys[i]])
-				} else {
-					query += fmt.Sprintf("'%s',", ent[keys[i]])
-				}
+				query += fmt.Sprintf("'%s',", ent[keys[i]])
 			} else {
-				if i == len(keys)-1 {
-					query += fmt.Sprintf("%d", ent[keys[i]])
-				} else {
-					query += fmt.Sprintf("%d,", ent[keys[i]])
-				}
+				query += fmt.Sprintf("%d,", ent[keys[i]])
 			}
-
 		}
-		if n == len(entitiesValue) {
-			query += ");"
-		} else {
-			query += "),"
-		}
-		n++
+		query = query[:len(query)-1] + "),"
 	}
+	query = query[:len(query)-1] + ";"
 	_, err := pt.pd.conn.Query(query)
 	if err != nil {
 		return err
@@ -187,18 +158,36 @@ func (pt PgTable) UpdateMany(entities interface{}) error {
 	return nil
 }
 
-func (pd PostgresDriver) ConnTable(name string, strct interface{}) pkg.Table {
+func (pt PgTable) DeleteOne(entity interface{}) error {
+	entityId := pkg.ScanTagsFromKeyInStruct(entity, "db")["id"]
+	var query string
+	if pkg.ScanTypeFromKeyInStruct(entity, "db")["id"] == "string" {
+		query = fmt.Sprintf("DELETE FROM %s WHERE id = '%s'", pt.name, entityId)
+	} else {
+		query = fmt.Sprintf("DELETE FROM %s WHERE id = %d", pt.name, entityId)
+	}
+	_, err := pt.pd.conn.Exec(query)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (pd PostgresDriver) ConnTable(name string, strct interface{}) dorm.Table {
 	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s' AND table_schema = 'public'", name)
-	err := pd.conn.Get(&MyTable{}, query)
+	err := pd.conn.Get(&PgTable{}, query)
 	if err == sql.ErrNoRows {
 		createTableQuery := fmt.Sprintf("CREATE TABLE %s (", name)
 		tagsType := pkg.ScanTypeFromKeyInStruct(strct, "db")
 
 		DbTypes := map[string]string{
-			"int":     "INTEGER",
-			"string":  "TEXT",
-			"float32": "DOUBLE",
-			"float64": "DOUBLE",
+			"int_uq":    "INTEGER UNIQUE",
+			"string_uq": "TEXT UNIQUE",
+			"int":       "INTEGER",
+			"serial":    "SERIAL PRIMARY KEY",
+			"string":    "TEXT",
+			"float32":   "DOUBLE",
+			"float64":   "DOUBLE",
 		}
 
 		for name, dataType := range tagsType {
