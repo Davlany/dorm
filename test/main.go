@@ -12,7 +12,7 @@ type User struct {
 	Id       int    `db:"id" serial:"true"`
 	Name     string `db:"name"`
 	Password string `db:"password"`
-	Posts    []Post `rel:"posts" rel_type:"one_to_many" field:"user_id"`
+	Posts    []Post `rel:"posts" field:"user_id"`
 }
 
 type Post struct {
@@ -20,7 +20,7 @@ type Post struct {
 	Caption     string `db:"caption"`
 	Description string `db:"description"`
 	Likes       int    `db:"likes"`
-	UserId      int    `db:"user_id" fk:"true"`
+	UserId      int    `db:"user_id" fk:"true" field:"id" rel:"users"`
 }
 
 func main() {
@@ -31,9 +31,9 @@ func main() {
 	db := dorm.NewDatabase(driver)
 	userTable := db.Table("users", User{})
 	var user User
-	err = userTable.FindOne(1111, user)
+	err = userTable.FindOne(1111, user, &user)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	fmt.Println(user.Posts)
+	fmt.Println(user)
 }

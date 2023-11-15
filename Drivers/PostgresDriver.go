@@ -5,9 +5,11 @@ import (
 	"dorm"
 	"dorm/pkg"
 	"fmt"
-	"github.com/jmoiron/sqlx"
 	"log"
 	"reflect"
+	"slices"
+
+	"github.com/jmoiron/sqlx"
 )
 
 type PostgresDriver struct {
@@ -24,7 +26,10 @@ func (pt PgTable) InsertOne(entity interface{}) (int, error) {
 	query := fmt.Sprintf("INSERT INTO %s (", pt.name)
 	var keys []string
 	for name := range queryParam {
-		if name == "id" && pkg.ScanTypeFromKeyInStruct(entity, "db")["id"] == "serial" {
+		if name == "id" && pkg.ScanTypeFromKeyInStruct(entity)["id"]["dataType"] == "serial" {
+			continue
+		}
+		if name == "" {
 			continue
 		}
 		keys = append(keys, name)
@@ -32,7 +37,7 @@ func (pt PgTable) InsertOne(entity interface{}) (int, error) {
 	}
 	query = query[:len(query)-1] + ") values ("
 	for _, key := range keys {
-		if key == "id" && pkg.ScanTypeFromKeyInStruct(entity, "db")["id"] == "serial" {
+		if key == "id" && pkg.ScanTypeFromKeyInStruct(entity)["id"]["dataType"] == "serial" {
 			continue
 		}
 		if reflect.TypeOf(queryParam[key]).Kind() == reflect.String {
@@ -91,8 +96,37 @@ func (pt PgTable) InsertMany(entities interface{}) error {
 	return nil
 }
 
-func (pt PgTable) FindOne(id interface{}, dest interface{}) error {
+func (pt PgTable) FindOne(id interface{}, dest interface{}, destPointer interface{}) error {
+	relIndexes := make(map[int][2]string)
 	i := reflect.TypeOf(id)
+	num := reflect.TypeOf(dest).NumField()
+	for n := 0; n < num; n++ {
+		rel := reflect.TypeOf(dest).Field(n).Tag.Get("rel")
+		if rel != "" {
+			field := reflect.TypeOf(dest).Field(n).Tag.Get("field")
+			if field == "" {
+				log.Println("field is empty")
+			}
+			relIndexes[n] = [2]string{rel, field}
+		}
+	}
+	for index, values := range relIndexes {
+		structValue := reflect.ValueOf(destPointer).Elem()
+		relField := structValue.Field(index)
+		var relData []interface{}
+		relQuery := fmt.Sprintf("SELECT * from %s WHERE %s = %d", values[0], values[1], id)
+		err := pt.pd.conn.Select(&relData, relQuery)
+		if err != nil {
+			log.Fatalln(err, "s")
+		}
+		fmt.Println(relQuery)
+		fmt.Println(relData)
+		sliceValue := reflect.ValueOf(relData)
+		relField.Set(sliceValue)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
 	if i.Kind() == reflect.String {
 		query := fmt.Sprintf("SELECT * from %s WHERE id = '%s'", pt.name, id)
 		err := pt.pd.conn.Get(dest, query)
@@ -161,7 +195,7 @@ func (pt PgTable) UpdateMany(entities interface{}) error {
 func (pt PgTable) DeleteOne(entity interface{}) error {
 	entityId := pkg.ScanTagsFromKeyInStruct(entity, "db")["id"]
 	var query string
-	if pkg.ScanTypeFromKeyInStruct(entity, "db")["id"] == "string" {
+	if pkg.ScanTypeFromKeyInStruct(entity)["id"]["dataType"] == "string" {
 		query = fmt.Sprintf("DELETE FROM %s WHERE id = '%s'", pt.name, entityId)
 	} else {
 		query = fmt.Sprintf("DELETE FROM %s WHERE id = %d", pt.name, entityId)
@@ -173,31 +207,59 @@ func (pt PgTable) DeleteOne(entity interface{}) error {
 	return nil
 }
 
+// CREATE TABLE {name}(
+// >> ID
+// >> Name
+// >>
+// >>
+
 func (pd PostgresDriver) ConnTable(name string, strct interface{}) dorm.Table {
 	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s' AND table_schema = 'public'", name)
 	err := pd.conn.Get(&PgTable{}, query)
 	if err == sql.ErrNoRows {
 		createTableQuery := fmt.Sprintf("CREATE TABLE %s (", name)
-		tagsType := pkg.ScanTypeFromKeyInStruct(strct, "db")
+		tagsType := pkg.ScanTypeFromKeyInStruct(strct)
 
 		DbTypes := map[string]string{
-			"int_uq":    "INTEGER UNIQUE",
-			"string_uq": "TEXT UNIQUE",
-			"int":       "INTEGER",
-			"serial":    "SERIAL PRIMARY KEY",
-			"string":    "TEXT",
-			"float32":   "DOUBLE",
-			"float64":   "DOUBLE",
+			"int":     "INTEGER",
+			"serial":  "SERIAL PRIMARY KEY",
+			"string":  "TEXT",
+			"float32": "DOUBLE",
+			"float64": "DOUBLE",
 		}
 
-		for name, dataType := range tagsType {
-			createTableQuery += fmt.Sprintf("%s %s,", name, DbTypes[dataType])
+		for fieldName, types := range tagsType {
+			createTableQuery += fieldName + " " + DbTypes[types["dataType"]]
+			skipTags := []string{"fk", "pk", "field"}
+			for typeName, value := range types {
+
+				if slices.Contains(skipTags, typeName) {
+					continue
+				}
+
+				if typeName == "rel" && value != "" {
+					if types["fk"] == "true" {
+						if types["field"] != "" {
+							fkQuery := fmt.Sprintf("FOREIGN KEY(%s) REFERENCES %s(%s)", fieldName, types["rel"], types["field"])
+							createTableQuery += "," + fkQuery
+						} else {
+							log.Fatal("Empty field")
+						}
+					}
+				} else {
+					if value == "true" {
+						createTableQuery += DbTypes[typeName]
+					}
+				}
+			}
+			createTableQuery += ","
 		}
-		createTableQuery = createTableQuery[:len(createTableQuery)-1] + ")"
+
+		createTableQuery = createTableQuery[:len(createTableQuery)-1] + ");"
 		fmt.Println(createTableQuery)
-		_, err := pd.conn.Query(createTableQuery)
+		_, err = pd.conn.Query(createTableQuery)
 		if err != nil {
-			log.Fatalln(err, "sdsd")
+			log.Fatalln(err)
 		}
 	}
 	return PgTable{
