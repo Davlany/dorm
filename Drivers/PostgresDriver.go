@@ -96,44 +96,17 @@ func (pt PgTable) InsertMany(entities interface{}) error {
 	return nil
 }
 
-func (pt PgTable) FindOne(id interface{}, dest interface{}, destPointer interface{}) error {
-	relIndexes := make(map[int][2]string)
+func (pt PgTable) FindOne(id interface{}, dest interface{}) error {
 	i := reflect.TypeOf(id)
-	num := reflect.TypeOf(dest).NumField()
-	for n := 0; n < num; n++ {
-		rel := reflect.TypeOf(dest).Field(n).Tag.Get("rel")
-		if rel != "" {
-			field := reflect.TypeOf(dest).Field(n).Tag.Get("field")
-			if field == "" {
-				log.Println("field is empty")
-			}
-			relIndexes[n] = [2]string{rel, field}
-		}
-	}
-	for index, values := range relIndexes {
-		structValue := reflect.ValueOf(destPointer).Elem()
-		relField := structValue.Field(index)
-		var relData []interface{}
-		relQuery := fmt.Sprintf("SELECT * from %s WHERE %s = %d", values[0], values[1], id)
-		err := pt.pd.conn.Select(&relData, relQuery)
-		if err != nil {
-			log.Fatalln(err, "s")
-		}
-		fmt.Println(relQuery)
-		fmt.Println(relData)
-		sliceValue := reflect.ValueOf(relData)
-		relField.Set(sliceValue)
-		if err != nil {
-			log.Fatalln(err)
-		}
-	}
 	if i.Kind() == reflect.String {
 		query := fmt.Sprintf("SELECT * from %s WHERE id = '%s'", pt.name, id)
 		err := pt.pd.conn.Get(dest, query)
+		fmt.Println(query)
 		return err
 	} else {
 		query := fmt.Sprintf("SELECT * from %s WHERE id = %d", pt.name, id)
 		err := pt.pd.conn.Get(dest, query)
+		fmt.Println(query)
 		return err
 	}
 }

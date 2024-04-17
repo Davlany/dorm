@@ -15,12 +15,16 @@ type User struct {
 	Posts    []Post `rel:"posts" field:"user_id"`
 }
 
+// SELECT * FROM users WHERE id = user.id
+// SELECT * FROM posts WHERE user_id = user.id
+//user.posts = posts
+
 type Post struct {
 	Id          int    `db:"id" serial:"true"`
 	Caption     string `db:"caption"`
 	Description string `db:"description"`
 	Likes       int    `db:"likes"`
-	UserId      int    `db:"user_id" fk:"true" field:"id" rel:"users"`
+	UserId      int    `db:"user_id" fk:"true" field:"id" rel:"users"` // INTEGER user_id FOREIGN KEY (user_id) REFERENCES users(id)
 }
 
 func main() {
@@ -30,8 +34,8 @@ func main() {
 	}
 	db := dorm.NewDatabase(driver)
 	userTable := db.Table("users", User{})
-	var user User
-	err = userTable.FindOne(1111, user, &user)
+	var user []User
+	err = userTable.FindAll(&user)
 	if err != nil {
 		log.Fatalln(err)
 	}
