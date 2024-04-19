@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"dorm"
 	"dorm/pkg"
+	"errors"
 	"fmt"
 	"log"
 	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -24,6 +26,7 @@ type PgTable struct {
 func (pt PgTable) InsertOne(entity interface{}) (int, error) {
 	queryParam := pkg.ScanTagsFromKeyInStruct(entity, "db")
 	query := fmt.Sprintf("INSERT INTO %s (", pt.name)
+	fmt.Println(pkg.ScanTypeFromKeyInStruct(entity))
 	var keys []string
 	for name := range queryParam {
 		if name == "id" && pkg.ScanTypeFromKeyInStruct(entity)["id"]["dataType"] == "serial" {
@@ -60,38 +63,12 @@ func (pt PgTable) InsertOne(entity interface{}) (int, error) {
 
 func (pt PgTable) InsertMany(entities interface{}) error {
 	num := reflect.ValueOf(entities).Len()
-	query := fmt.Sprintf("INSERT INTO %s(", pt.name)
-	var entitiesValue []map[string]interface{}
 	for i := 0; i < num; i++ {
 		entityValue := reflect.ValueOf(entities).Index(i).Interface()
-		val := pkg.ScanTagsFromKeyInStruct(entityValue, "db")
-		entitiesValue = append(entitiesValue, val)
-	}
-	var keys []string
-	for key := range entitiesValue[0] {
-		if key == "id" {
-			continue
+		_, err := pt.InsertOne(entityValue)
+		if err != nil {
+			return err
 		}
-		query += fmt.Sprintf("%s,", key)
-		keys = append(keys, key)
-	}
-	query = query[:len(query)-1] + ") VALUES "
-
-	for _, ent := range entitiesValue {
-		query += "("
-		for i := 0; i < len(keys); i++ {
-			if reflect.TypeOf(ent[keys[i]]).Kind() == reflect.String {
-				query += fmt.Sprintf("'%s',", ent[keys[i]])
-			} else {
-				query += fmt.Sprintf("%d,", ent[keys[i]])
-			}
-		}
-		query = query[:len(query)-1] + "),"
-	}
-	query = query[:len(query)-1] + ";"
-	_, err := pt.pd.conn.Query(query)
-	if err != nil {
-		return err
 	}
 	return nil
 }
@@ -186,10 +163,77 @@ func (pt PgTable) DeleteOne(entity interface{}) error {
 // >>
 // >>
 
+func (pd PostgresDriver) RegisterSchemas(schemas interface{}) error {
+	fmt.Println(schemas)
+	num := reflect.ValueOf(schemas).Len()
+	fmt.Println(num)
+	for i := 0; i < num; i++ {
+		fmt.Println(i)
+		schemaName := strings.ToLower(reflect.TypeOf(reflect.ValueOf(schemas).Index(i).Interface()).Name() + "s")
+		query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s' AND table_schema = 'public'", schemaName)
+		err := pd.conn.Get(&PgTable{}, query)
+		if errors.Is(err, sql.ErrNoRows) {
+			createTableQuery := fmt.Sprintf("CREATE TABLE %s (", schemaName)
+			tagsType := pkg.ScanTypeFromKeyInStruct(reflect.ValueOf(schemas).Index(i).Interface())
+
+			DbTypes := map[string]string{
+				"int":     "INTEGER",
+				"serial":  "SERIAL PRIMARY KEY",
+				"string":  "TEXT",
+				"float32": "DOUBLE",
+				"float64": "DOUBLE",
+			}
+
+			for fieldName, types := range tagsType {
+				if fieldName == "rel" {
+					continue
+				}
+				createTableQuery += fieldName + " " + DbTypes[types["dataType"]]
+				skipTags := []string{"fk", "pk", "field"}
+				for typeName, value := range types {
+
+					if slices.Contains(skipTags, typeName) {
+						continue
+					}
+
+					if typeName == "rel" && value != "" {
+						if types["fk"] == "true" {
+							if types["field"] != "" {
+								fkQuery := fmt.Sprintf("FOREIGN KEY(%s) REFERENCES %s(%s)", fieldName, types["rel"], types["field"])
+								createTableQuery += "," + fkQuery
+							} else {
+								log.Fatal("Empty field")
+							}
+						}
+					} else {
+						if value == "true" {
+							createTableQuery += DbTypes[typeName]
+						}
+					}
+				}
+				createTableQuery += ","
+			}
+
+			createTableQuery = createTableQuery[:len(createTableQuery)-1] + ");"
+			fmt.Println(createTableQuery)
+			_, err = pd.conn.Query(createTableQuery)
+			if err != nil {
+				return err
+			}
+		} else if err != nil {
+			fmt.Println(query)
+			fmt.Println(i)
+		} else {
+			continue
+		}
+	}
+	return nil
+}
+
 func (pd PostgresDriver) ConnTable(name string, strct interface{}) dorm.Table {
 	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s' AND table_schema = 'public'", name)
 	err := pd.conn.Get(&PgTable{}, query)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		createTableQuery := fmt.Sprintf("CREATE TABLE %s (", name)
 		tagsType := pkg.ScanTypeFromKeyInStruct(strct)
 
@@ -232,7 +276,7 @@ func (pd PostgresDriver) ConnTable(name string, strct interface{}) dorm.Table {
 		fmt.Println(createTableQuery)
 		_, err = pd.conn.Query(createTableQuery)
 		if err != nil {
-			log.Fatalln(err)
+			log.Fatalln("Executing query:", err)
 		}
 	}
 	return PgTable{

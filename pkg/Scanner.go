@@ -49,7 +49,7 @@ func ScanTypeFromKeyInStruct(obj interface{}) map[string]map[string]string {
 		dataType := reflect.TypeOf(obj).Field(i).Type.String()
 		name := reflect.TypeOf(obj).Field(i).Tag.Get("db")
 
-		if name == "" {
+		if name == "" && (reflect.TypeOf(obj).Field(i).Tag.Get("field") == "" || reflect.TypeOf(obj).Field(i).Tag.Get("rel") == "") {
 			continue
 		}
 
@@ -64,7 +64,12 @@ func ScanTypeFromKeyInStruct(obj interface{}) map[string]map[string]string {
 			keyValues[key] = keyValue
 		}
 		keyValues["dataType"] = dataType
-		res[name] = keyValues
+		if name == "" {
+			res["rel"] = keyValues
+		} else {
+			res[name] = keyValues
+		}
+
 	}
 	return res
 }

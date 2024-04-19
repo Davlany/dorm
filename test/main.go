@@ -3,7 +3,6 @@ package main
 import (
 	"dorm"
 	"dorm/Drivers"
-	"fmt"
 	_ "github.com/lib/pq"
 	"log"
 )
@@ -33,11 +32,12 @@ func main() {
 		log.Fatalln(err)
 	}
 	db := dorm.NewDatabase(driver)
-	userTable := db.Table("users", User{})
-	var user []User
-	err = userTable.FindAll(&user)
+	err = db.RegisterSchemas([]interface{}{User{}, Post{}})
 	if err != nil {
 		log.Fatalln(err)
 	}
-	fmt.Println(user)
+	userTable := db.Table("users", User{})
+
+	_ = userTable
+
 }
