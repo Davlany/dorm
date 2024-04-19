@@ -164,9 +164,7 @@ func (pt PgTable) DeleteOne(entity interface{}) error {
 // >>
 
 func (pd PostgresDriver) RegisterSchemas(schemas interface{}) error {
-	fmt.Println(schemas)
 	num := reflect.ValueOf(schemas).Len()
-	fmt.Println(num)
 	for i := 0; i < num; i++ {
 		fmt.Println(i)
 		schemaName := strings.ToLower(reflect.TypeOf(reflect.ValueOf(schemas).Index(i).Interface()).Name() + "s")
@@ -221,8 +219,7 @@ func (pd PostgresDriver) RegisterSchemas(schemas interface{}) error {
 				return err
 			}
 		} else if err != nil {
-			fmt.Println(query)
-			fmt.Println(i)
+			log.Println(err)
 		} else {
 			continue
 		}
